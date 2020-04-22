@@ -1,28 +1,61 @@
-// ----- INCLUDES -----
+// ----- INCLUDES --------------------
 #include <SDL2/SDL.h>
 
-#include <iostream>
 #include <sys/time.h>
+#include <iostream>
+#include <cstdlib>
+#include "math_vector.h"
+#include <vector>
+#include <math.h>
+#include <limits>
+
+using namespace std;
+// _____ INCLUDES _____
+
+// ----- STRUCTURES --------------------
+struct Object {
+    double (*dist)(const double3 &pos);
+    double3 color = {1, 1, 1};
+
+    Object(double (*dist)(const double3 &pos)) : dist(dist) {}
+    Object(double (*dist)(const double3 &pos), const double3 &color) : dist(dist), color(color) {}
+};
+// _____ STRUCTURES _____
+
+// ----- GLOBAL VARIABLES --------------------
+SDL_Window *win = NULL;
+SDL_Renderer *ren = NULL;
+
+struct {
+    const int screen_width  = 800;
+    const int screen_height = 800;
+
+    const bool fullscreen = 0;
+
+    const double FOV   = 3.14159265358979323846 / 3;
+    const double zNear = 1;
+    const double zFar  = 100;
+
+    const uint maxMarchingIter = 100;
+
+    const double collisionDistance = 0.001;     // min dist to count collision
+} settings;
+
+// double3 viewpoint = {0, 0, 0};
+// double3 front = {0, 0, -1};
+// double3 up    = {0, 1,  0};
+// double3 side  = {1, 0,  0};
+
+vector<Object> objs;
+// _____ GLOBAL VARIABLES _____
+
+// ----- CODE --------------------
 struct timeval tp;
 double time() {
     gettimeofday(&tp, NULL);
     return (tp.tv_sec + tp.tv_usec / 1e6);
 }
 
-using namespace std;
-// _____ INCLUDES _____
-
-// ----- GLOBAL VARIABLES -----
-struct {
-    const int wid = 640;
-    const int hei = 480;
-} SCREEN;
-
-SDL_Window *win = NULL;
-SDL_Renderer *ren = NULL;
-// _____ GLOBAL VARIABLES _____
-
-// ----- CODE -----
 void quit() {
     SDL_DestroyWindow(win);
     win = NULL;
@@ -40,7 +73,8 @@ void init() {
     }
 
     win = SDL_CreateWindow("Ray Marching", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-          SCREEN.wid, SCREEN.hei, SDL_WINDOW_SHOWN/* | SDL_WINDOW_FULLSCREEN*/);
+          settings.screen_width, settings.screen_height,
+          SDL_WINDOW_SHOWN | (settings.fullscreen ? SDL_WINDOW_FULLSCREEN : 0));
     if (win == NULL) {
         quit();
         exit(2);
@@ -51,18 +85,59 @@ void init() {
         quit();
         exit(3);
     }
-
-    SDL_SetRenderDrawColor(ren, 0x44, 0x44, 0x44, 0xff);
 }
 
-void mainloop() {
+double3 getNormal(const Object &obj, const double3 &pos) {
+    const double eps = 0.0001;
+    double d  = obj.dist(pos);
+    double x = obj.dist(pos + double3({eps, 0, 0})) - d;
+    double y = obj.dist(pos + double3({0, eps, 0})) - d;
+    double z = obj.dist(pos + double3({0, 0, eps})) - d;
+    return double3({x, y, z}).normalize();
+}
+
+double3 ray_marching(double3 pos, double3 dir) {
+    dir = dir.normalize();
+    double dist = 0;
+
+    for (int i = 0; i < settings.maxMarchingIter && dist < settings.zFar; ++i) {
+        double mindist = 1e100;
+        for (const Object &obj : objs) {
+            mindist = min(mindist, obj.dist(pos));
+            if (mindist <= settings.collisionDistance) {
+                return obj.color * max(0.4, (getNormal(obj, pos) * (double3({5, 5, 0}) - pos).normalize()));
+            }
+        }
+
+        pos = pos + dir * mindist;
+        dist += mindist;
+    }
+
+    return {0, 0, 0};
+}
+
+int main() {
+    init();
+
+    objs = {
+        {[](const double3 &pos) -> double {
+                return sqrt(max(0., abs(pos[0] + 3 ) - 1) * max(0., abs(pos[0] + 3 ) - 1) +
+                            max(0., abs(pos[1] + 2 ) - 1) * max(0., abs(pos[1] + 2 ) - 1) +
+                            max(0., abs(pos[2] - 10) - 1) * max(0., abs(pos[2] - 10) - 1));
+            }, {1, 1, 1}},
+        {[](const double3 &pos) -> double {
+            return (pos - double3({0, 0, 15})).len() - 2;
+        }, {1, 1, 1}},
+        {[](const double3 &pos) -> double {
+            return (pos - double3({2, 0, 15})).len() - 2;
+        }, {1, 1, 1}},
+    };
+
     bool run = 1;
     SDL_Event event;
 
+    // ----- MAINLOOP --------------------
     while (run) {
-        // get keyboard state
-        const Uint8* keys = SDL_GetKeyboardState(NULL);
-
         // close event
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
@@ -70,16 +145,32 @@ void mainloop() {
             }
         }
 
+        const Uint8* keys = SDL_GetKeyboardState(NULL);
+
+        // ---- keyboard events ------------
         if (keys[SDL_SCANCODE_Q] || keys[SDL_SCANCODE_ESCAPE]) {
             run = 0;
         }
+        // ____ keyboard events ____
+
+        // ---- drawing ------------
+        for (uint x = 0; x < settings.screen_width; ++x) {
+            for (uint y = 0; y < settings.screen_height; ++y) {
+                double3 color = ray_marching({0, 0, 0}, 
+                    {(1. * x / settings.screen_width) - 0.5, 
+                     (-1. * y / settings.screen_height) + 0.5,
+                     settings.zNear});
+
+                SDL_SetRenderDrawColor(ren, color[0] * 255, color[1] * 255, color[2] * 255, 0xff);
+                SDL_RenderDrawPoint(ren, x, y);
+            }
+        }
+
+        SDL_RenderPresent(ren);
+        // SDL_Delay(100);
+        // ____ drawing ____
     }
-}
-
-int main() {
-    init();
-
-    mainloop();
+    // _____ MAINLOOP _____
 
     quit();
 }

@@ -1,8 +1,10 @@
 // ----- INCLUDES --------------------
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_thread.h>
 
 #include <sys/time.h>
 #include <iostream>
+#include <iomanip>
 #include <cstdlib>
 #include "math_vector.h"
 #include <vector>
@@ -27,8 +29,8 @@ SDL_Window *win = NULL;
 SDL_Renderer *ren = NULL;
 
 struct {
-    const int screen_width  = 640;
-    const int screen_height = 480;
+    const int screen_width  = 320;//640;
+    const int screen_height = 240;//480;
 
     const bool fullscreen = 0;
 
@@ -38,9 +40,9 @@ struct {
 
     const uint maxMarchingIter = 40;
 
-    const double collisionDistance = 0.001;     // min dist to count collision
+    const double collisionDistance = 0.01;     // min dist to count collision
 
-    const double moveSpeed = 1;
+    const double moveSpeed = 3;
 } settings;
 
 double3 viewpoint = {0, 0, 0};
@@ -48,14 +50,17 @@ double3 viewpoint = {0, 0, 0};
 // double3 up    = {0, 1,  0};
 // double3 side  = {1, 0,  0};
 
+bool run = 1;
+SDL_Event event;
+
 vector<Object> objs;
 // _____ GLOBAL VARIABLES _____
 
 // ----- CODE --------------------
 struct timeval tp;
-unsigned long long time() {
+long long time() {
     gettimeofday(&tp, NULL);
-    return (tp.tv_sec * 1e3 + tp.tv_usec / 1e3);
+    return (tp.tv_sec * 1e6 + tp.tv_usec);
 }
 
 void quit() {
@@ -118,32 +123,12 @@ double3 ray_marching(double3 pos, double3 dir) {
     return {0, 0, 0};
 }
 
-int main() {
-    init();
+int eventthread(void *data) {
+    long long lastTimeStamp = time();
 
-    objs = {
-        {[](const double3 &pos) -> double {
-                return sqrt(max(0., abs(pos[0] + 3 ) - 1) * max(0., abs(pos[0] + 3 ) - 1) +
-                            max(0., abs(pos[1] + 2 ) - 1) * max(0., abs(pos[1] + 2 ) - 1) +
-                            max(0., abs(pos[2] - 10) - 1) * max(0., abs(pos[2] - 10) - 1));
-            }, {1, 1, 1}},
-        {[](const double3 &pos) -> double {
-            return (pos - double3({0, 0, 15})).len() - 2;
-        }, {1, 1, 1}},
-        {[](const double3 &pos) -> double {
-            return (pos - double3({2, 0, 15})).len() - 2;
-        }, {1, 1, 1}},
-    };
-
-    bool run = 1;
-    SDL_Event event;
-
-    unsigned long long lastTimeStamp = time();
-
-    // ----- MAINLOOP --------------------
     while (run) {
-        unsigned long long nowTimeStamp = time();
-        double deltaTime = lastTimeStamp - nowTimeStamp;
+        long long nowTimeStamp = time();
+        double deltaTime = (nowTimeStamp - lastTimeStamp) / 1.e6;
         lastTimeStamp = nowTimeStamp;
 
         // close event
@@ -160,13 +145,42 @@ int main() {
             run = 0;
         }
 
-        if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_K] || keys[SDL_SCANCODE_UP   ]) viewpoint[2] += settings.moveSpeed ;// * (deltaTime /1000);
-        if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_J] || keys[SDL_SCANCODE_DOWN ]) viewpoint[2] -= settings.moveSpeed ;// * (deltaTime /1000);
-        if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_H] || keys[SDL_SCANCODE_LEFT ]) viewpoint[0] -= settings.moveSpeed ;// * (deltaTime /1000);
-        if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_L] || keys[SDL_SCANCODE_RIGHT]) viewpoint[0] += settings.moveSpeed ;// * (deltaTime /1000);
-        cout << viewpoint << '\n';
+        if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_K] || keys[SDL_SCANCODE_UP   ]) viewpoint[2] += settings.moveSpeed * deltaTime;
+        if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_J] || keys[SDL_SCANCODE_DOWN ]) viewpoint[2] -= settings.moveSpeed * deltaTime;
+        if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_H] || keys[SDL_SCANCODE_LEFT ]) viewpoint[0] -= settings.moveSpeed * deltaTime;
+        if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_L] || keys[SDL_SCANCODE_RIGHT]) viewpoint[0] += settings.moveSpeed * deltaTime;
         // ____ keyboard events ____
+    }
 
+    return 0;
+}
+
+int main() {
+    init();
+
+    // ----- OBJECTS ---------------
+    objs = {
+        // {[](const double3 &pos) -> double {
+        //         return sqrt(max(0., abs(pos[0] + 3 ) - 1) * max(0., abs(pos[0] + 3 ) - 1) +
+        //                     max(0., abs(pos[1] + 2 ) - 1) * max(0., abs(pos[1] + 2 ) - 1) +
+        //                     max(0., abs(pos[2] - 10) - 1) * max(0., abs(pos[2] - 10) - 1));
+        //     }, {1, 1, 1}},
+        {[](const double3 &pos) -> double {
+            return (pos - double3({0, 0, 15})).len() - 2;
+        }, {1, 1, 1}},
+        {[](const double3 &pos) -> double {
+            return ((pos - double3({2, 0, 15})) % 3.).len() - 2;
+        }, {1, 1, 1}},
+        {[](const double3 &pos) -> double {
+            return pos[1] + 3 - sin(pos[0]) * sin(pos[2]);
+        }, {1, 1, 1}},
+    };
+    // _____ OBJECTS _____
+
+    SDL_CreateThread(eventthread, NULL, NULL);
+
+    // ----- MAINLOOP --------------------
+    while (run) {
         // ---- drawing ------------
         double realx, realy;
         if (settings.screen_width == settings.screen_height) {

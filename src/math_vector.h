@@ -128,6 +128,15 @@ std::ostream &operator<<(std::ostream &out, const vec<T, SIZE> &rhs) {
     return out;
 }
 
+template <typename T, uint SIZE>
+vec<T, SIZE> operator%(const vec<T, SIZE> &lhs, const T &rhs) {
+    vec<T, SIZE> res;
+    for (int i = 0; i < SIZE; ++i) {
+        res[i] = lhs[i] - (lhs[i] / rhs);
+    }
+    return res;
+}
+
 // template <typename T, uint SIZE>
 // vec<T, SIZE> operator+=(vec<T, SIZE> &lhs, const vec<T, SIZE>&rhs) {
 //     return (lhs = lhs + rhs);

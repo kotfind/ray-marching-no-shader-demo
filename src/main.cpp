@@ -27,8 +27,8 @@ SDL_Window *win = NULL;
 SDL_Renderer *ren = NULL;
 
 struct {
-    const int screen_width  = 800;
-    const int screen_height = 800;
+    const int screen_width  = 640;
+    const int screen_height = 480;
 
     const bool fullscreen = 0;
 
@@ -36,12 +36,14 @@ struct {
     const double zNear = 1;
     const double zFar  = 100;
 
-    const uint maxMarchingIter = 100;
+    const uint maxMarchingIter = 40;
 
     const double collisionDistance = 0.001;     // min dist to count collision
+
+    const double moveSpeed = 1;
 } settings;
 
-// double3 viewpoint = {0, 0, 0};
+double3 viewpoint = {0, 0, 0};
 // double3 front = {0, 0, -1};
 // double3 up    = {0, 1,  0};
 // double3 side  = {1, 0,  0};
@@ -51,9 +53,9 @@ vector<Object> objs;
 
 // ----- CODE --------------------
 struct timeval tp;
-double time() {
+unsigned long long time() {
     gettimeofday(&tp, NULL);
-    return (tp.tv_sec + tp.tv_usec / 1e6);
+    return (tp.tv_sec * 1e3 + tp.tv_usec / 1e3);
 }
 
 void quit() {
@@ -136,8 +138,14 @@ int main() {
     bool run = 1;
     SDL_Event event;
 
+    unsigned long long lastTimeStamp = time();
+
     // ----- MAINLOOP --------------------
     while (run) {
+        unsigned long long nowTimeStamp = time();
+        double deltaTime = lastTimeStamp - nowTimeStamp;
+        lastTimeStamp = nowTimeStamp;
+
         // close event
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
@@ -151,14 +159,31 @@ int main() {
         if (keys[SDL_SCANCODE_Q] || keys[SDL_SCANCODE_ESCAPE]) {
             run = 0;
         }
+
+        if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_K] || keys[SDL_SCANCODE_UP   ]) viewpoint[2] += settings.moveSpeed ;// * (deltaTime /1000);
+        if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_J] || keys[SDL_SCANCODE_DOWN ]) viewpoint[2] -= settings.moveSpeed ;// * (deltaTime /1000);
+        if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_H] || keys[SDL_SCANCODE_LEFT ]) viewpoint[0] -= settings.moveSpeed ;// * (deltaTime /1000);
+        if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_L] || keys[SDL_SCANCODE_RIGHT]) viewpoint[0] += settings.moveSpeed ;// * (deltaTime /1000);
+        cout << viewpoint << '\n';
         // ____ keyboard events ____
 
         // ---- drawing ------------
+        double realx, realy;
+        if (settings.screen_width == settings.screen_height) {
+            realx = realy = 1;
+        } else if (settings.screen_width < settings.screen_height) {
+            realx = 1;
+            realy = settings.screen_height / settings.screen_width;
+        } else {
+            realy = 1;
+            realx = settings.screen_width / settings.screen_height;
+        }
+
         for (uint x = 0; x < settings.screen_width; ++x) {
             for (uint y = 0; y < settings.screen_height; ++y) {
-                double3 color = ray_marching({0, 0, 0}, 
-                    {(1. * x / settings.screen_width) - 0.5, 
-                     (-1. * y / settings.screen_height) + 0.5,
+                double3 color = ray_marching(viewpoint, 
+                    {((1. * x / settings.screen_width) - 0.5) * realx,
+                     ((-1. * y / settings.screen_height) + 0.5) * realy,
                      settings.zNear});
 
                 SDL_SetRenderDrawColor(ren, color[0] * 255, color[1] * 255, color[2] * 255, 0xff);

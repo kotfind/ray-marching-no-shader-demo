@@ -36,13 +36,13 @@ struct {
 
     const double FOV   = 3.14159265358979323846 / 3;
     const double zNear = 1;
-    const double zFar  = 100;
+    const double zFar  = 50;
 
-    const uint maxMarchingIter = 40;
+    const uint maxMarchingIter = 50;
 
-    const double collisionDistance = 0.01;     // min dist to count collision
+    const double collisionDistance = 0.00001;     // min dist to count collision
 
-    const double moveSpeed = 3;
+    const double moveSpeed = 5;
 } settings;
 
 double3 viewpoint = {0, 0, 0};
@@ -61,6 +61,10 @@ struct timeval tp;
 long long time() {
     gettimeofday(&tp, NULL);
     return (tp.tv_sec * 1e6 + tp.tv_usec);
+}
+
+double sq(const double &n) {
+    return n * n;
 }
 
 void quit() {
@@ -112,7 +116,8 @@ double3 ray_marching(double3 pos, double3 dir) {
         for (const Object &obj : objs) {
             mindist = min(mindist, obj.dist(pos));
             if (mindist <= settings.collisionDistance) {
-                return obj.color * max(0.4, (getNormal(obj, pos) * (double3({5, 5, 0}) - pos).normalize()));
+                //return obj.color * max(0.4, (getNormal(obj, pos) * (double3({5, 5, 0}) - pos).normalize()));
+                return obj.color * max(0.4, (getNormal(obj, pos) * (viewpoint - pos).normalize()));
             }
         }
 
@@ -155,25 +160,41 @@ int eventthread(void *data) {
     return 0;
 }
 
+double mod(const double &lhs, const double &rhs) {
+    return lhs - floor(lhs / rhs) * rhs;
+}
+
 int main() {
     init();
 
     // ----- OBJECTS ---------------
     objs = {
-        // {[](const double3 &pos) -> double {
-        //         return sqrt(max(0., abs(pos[0] + 3 ) - 1) * max(0., abs(pos[0] + 3 ) - 1) +
-        //                     max(0., abs(pos[1] + 2 ) - 1) * max(0., abs(pos[1] + 2 ) - 1) +
-        //                     max(0., abs(pos[2] - 10) - 1) * max(0., abs(pos[2] - 10) - 1));
-        //     }, {1, 1, 1}},
+        {[](const double3 &pos) -> double {
+                return sqrt(max(0., abs(pos[0] + 3 ) - 1) * max(0., abs(pos[0] + 3 ) - 1) +
+                            max(0., abs(pos[1] + 2 ) - 1) * max(0., abs(pos[1] + 2 ) - 1) +
+                            max(0., abs(pos[2] - 10) - 1) * max(0., abs(pos[2] - 10) - 1));
+            }, {1, 1, 1}},
         {[](const double3 &pos) -> double {
             return (pos - double3({0, 0, 15})).len() - 2;
         }, {1, 1, 1}},
         {[](const double3 &pos) -> double {
-            return ((pos - double3({2, 0, 15})) % 3.).len() - 2;
+            double x = pos[0] - 2;
+            double y = pos[1] - 0;
+            double z = pos[2] - 15;
+            // x = mod(x, 1.);
+            return double3({x, y, z}).len() - 2;
         }, {1, 1, 1}},
         {[](const double3 &pos) -> double {
             return pos[1] + 3 - sin(pos[0]) * sin(pos[2]);
         }, {1, 1, 1}},
+        // {[](const double3 &pos) -> double {
+        //     const double x = pos[0];
+        //     const double y = pos[1] - 3;
+        //     const double z = pos[2] - 20;
+        //     const double r = 10;
+        //     const double a = 2;
+        //     return sq(sq(x) + sq(y) + sq(z) + sq(r) - sq(a)) - 4 * sq(r) * (sq(x) + sq(y));
+        // }, {1, 1, 1}},
     };
     // _____ OBJECTS _____
 
